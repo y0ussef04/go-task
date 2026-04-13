@@ -1,816 +1,347 @@
-// Global variables
-let currentSection = 'database';
-let currentDatabase = '';
+// ============================================
+// Dynamic DB Manager - Frontend Logic
+// ============================================
 
-// API base URL
-const API_BASE = '/api';
+const API = '/api';
+let currentDB = '';        // currently selected database
+let editContext = null;    // { dbName, tableName, pkCol, pkVal, columns }
 
-// Utility functions
-function showStatus(elementId, message, type = 'info') {
-    const element = document.getElementById(elementId);
-    element.textContent = message;
-    element.className = `status ${type}`;
-    element.style.display = 'block';
+// ---------- Navigation ----------
 
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-        element.style.display = 'none';
-    }, 5000);
+function navigate(page) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + page)?.classList.add('active');
+
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    event?.target.closest('.nav-btn')?.classList.add('active');
+
+    // Pre-load data for pages that need it
+    if (['add-column', 'insert', 'browse'].includes(page) && currentDB) {
+        loadTableDropdowns();
+    }
 }
 
-function clearStatus(elementId) {
-    document.getElementById(elementId).style.display = 'none';
+// ---------- Toast notifications ----------
+
+function toast(msg, type = 'success') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast ' + type;
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.add('hidden'), 4000);
 }
 
-function showSection(sectionName) {
-    // Hide all sections
-    document.querySelectorAll('.section').forEach(section => {
-        section.classList.add('hidden');
-    });
+// ---------- API helpers ----------
 
-    // Show selected section
-    document.getElementById(`${sectionName}-section`).classList.remove('hidden');
-    currentSection = sectionName;
-
-    // Clear any previous status messages
-    clearStatus('db-status');
-    clearStatus('table-status');
-    clearStatus('data-status');
-    clearStatus('sample-status');
+async function api(path, opts = {}) {
+    try {
+        const res = await fetch(API + path, {
+            headers: { 'Content-Type': 'application/json' },
+            ...opts,
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Unknown error');
+        return json;
+    } catch (err) {
+        toast(err.message, 'error');
+        throw err;
+    }
 }
 
-// Database operations
+// ---------- Dashboard: list databases ----------
+
+async function loadDatabases() {
+    try {
+        const res = await api('/databases');
+        const dbs = res.data || [];
+        const container = document.getElementById('db-list');
+        if (dbs.length === 0) {
+            container.innerHTML = '<p class="muted">No databases yet. Create one!</p>';
+            return;
+        }
+        container.innerHTML = dbs.map(name => `
+            <div class="db-card ${name === currentDB ? 'selected' : ''}" onclick="selectDB('${name}')">
+                <span class="db-icon">🗄️</span>
+                <span class="db-name">${name}</span>
+            </div>
+        `).join('');
+    } catch (_) { /* toast already shown */ }
+}
+
+function selectDB(name) {
+    currentDB = name;
+    document.getElementById('current-db-badge').textContent = '📦 ' + name;
+    document.getElementById('current-db-badge').className = 'active-db';
+    loadDatabases(); // refresh highlights
+    toast(`Switched to database: ${name}`);
+}
+
+// ---------- Create Database ----------
+
 async function createDatabase() {
-    const dbName = document.getElementById('db-name').value.trim();
-    if (!dbName) {
-        showStatus('db-status', 'Please enter a database name', 'error');
-        return;
-    }
+    const input = document.getElementById('new-db-name');
+    const name = input.value.trim();
+    if (!name) return toast('Enter a database name', 'error');
+    await api('/databases', { method: 'POST', body: JSON.stringify({ name }) });
+    input.value = '';
+    toast(`Database '${name}' created`);
+    loadDatabases();
+}
 
+// ---------- Load table dropdowns ----------
+
+async function loadTableDropdowns() {
+    if (!currentDB) return;
     try {
-        const response = await fetch(`${API_BASE}/databases`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ name: dbName }),
+        const res = await api(`/databases/${currentDB}/tables`);
+        const tables = res.data?.tables || [];
+        const opts = '<option value="">Select table...</option>' +
+            tables.map(t => `<option value="${t}">${t}</option>`).join('');
+        ['addcol-table', 'insert-table', 'browse-table'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = opts;
         });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showStatus('db-status', result.message, 'success');
-            document.getElementById('db-name').value = '';
-        } else {
-            showStatus('db-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('db-status', 'Network error: ' + error.message, 'error');
-    }
+    } catch (_) {}
 }
 
-async function useDatabase() {
-    const dbName = document.getElementById('use-db-dropdown').value.trim();
-    if (!dbName) {
-        showStatus('db-status', 'Please select a database', 'error');
-        return;
-    }
+// ---------- Create Table ----------
 
-    try {
-        const response = await fetch(`${API_BASE}/databases/use`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ name: dbName }),
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showStatus('db-status', result.message, 'success');
-            currentDatabase = dbName; // Store current database
-            // Reload tables in all dropdowns
-            loadTablesToInsert();
-            loadTablesToView();
-            loadTablesToUpdate();
-            loadTablesToDelete();
-        } else {
-            showStatus('db-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('db-status', 'Network error: ' + error.message, 'error');
-    }
-}
-
-// Load databases for the Use Database section
-async function loadDatabasesToUse() {
-    try {
-        const response = await fetch(`${API_BASE}/databases/list`);
-        const result = await response.json();
-
-        if (response.ok && result.data) {
-            const dropdown = document.getElementById('use-db-dropdown');
-            dropdown.innerHTML = '<option value="">Select a database</option>';
-            
-            result.data.forEach(db => {
-                const option = document.createElement('option');
-                option.value = db;
-                option.textContent = db;
-                dropdown.appendChild(option);
-            });
-            
-            showStatus('db-status', 'Databases loaded', 'success');
-        } else {
-            showStatus('db-status', 'Failed to load databases', 'error');
-        }
-    } catch (error) {
-        showStatus('db-status', 'Network error: ' + error.message, 'error');
-    }
-}
-
-// Load tables for quick insert
-async function loadTablesForQuickInsert() {
-    if (!currentDatabase) {
-        const dropdown = document.getElementById('quick-insert-table');
-        dropdown.innerHTML = '<option value="">Select a database first</option>';
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/databases/${currentDatabase}`);
-        const result = await response.json();
-
-        if (response.ok && result.data && result.data.tables) {
-            const dropdown = document.getElementById('quick-insert-table');
-            dropdown.innerHTML = '<option value="">Choose a table to insert into</option>';
-            
-            result.data.tables.forEach(table => {
-                const option = document.createElement('option');
-                option.value = table;
-                option.textContent = table;
-                dropdown.appendChild(option);
-            });
-        }
-    } catch (error) {
-        console.error('Error loading tables:', error);
-    }
-}
-
-// Generate quick insert form when table is selected
-async function generateQuickInsertForm() {
-    const tableName = document.getElementById('quick-insert-table').value.trim();
-    if (!tableName || !currentDatabase) {
-        document.getElementById('quick-insert-form').style.display = 'none';
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/databases/${currentDatabase}/tables/${tableName}/schema`);
-        const result = await response.json();
-
-        if (response.ok && result.data && result.data.columns) {
-            const container = document.getElementById('quick-insert-fields');
-            container.innerHTML = '';
-
-            result.data.columns.forEach(col => {
-                const fieldDiv = document.createElement('div');
-                fieldDiv.className = 'field-input';
-                
-                // Create appropriate input type based on column type
-                let inputType = 'text';
-                let placeholder = `Enter ${col.type.toLowerCase()} value`;
-                
-                if (col.type.toLowerCase().includes('int') || col.type.toLowerCase().includes('float') || col.type.toLowerCase().includes('double') || col.type.toLowerCase().includes('decimal')) {
-                    inputType = 'number';
-                    placeholder = `Enter number (${col.type})`;
-                } else if (col.type.toLowerCase().includes('date')) {
-                    inputType = 'date';
-                    placeholder = 'Select date';
-                } else if (col.type.toLowerCase().includes('datetime') || col.type.toLowerCase().includes('timestamp')) {
-                    inputType = 'datetime-local';
-                    placeholder = 'Select date and time';
-                }
-                
-                fieldDiv.innerHTML = `
-                    <label>${col.name} (${col.type}):</label>
-                    <input type="${inputType}" name="${col.name}" placeholder="${placeholder}" data-column="${col.name}">
-                `;
-                container.appendChild(fieldDiv);
-            });
-
-            document.getElementById('quick-insert-form').style.display = 'block';
-            showStatus('data-status', `Ready to insert into '${tableName}'`, 'success');
-        } else {
-            showStatus('data-status', 'Failed to load table schema', 'error');
-        }
-    } catch (error) {
-        showStatus('data-status', 'Network error: ' + error.message, 'error');
-    }
-}
-
-// Submit quick insert form
-async function submitQuickInsert() {
-    const tableName = document.getElementById('quick-insert-table').value.trim();
-    if (!tableName) {
-        showStatus('data-status', 'Please select a table', 'error');
-        return;
-    }
-
-    if (!currentDatabase) {
-        showStatus('data-status', 'Please select a database first', 'error');
-        return;
-    }
-
-    const data = {};
-    const inputs = document.querySelectorAll('#quick-insert-fields input');
-    let hasData = false;
-    
-    inputs.forEach(input => {
-        const column = input.getAttribute('data-column');
-        const value = input.value.trim();
-        if (value !== '') {
-            data[column] = value;
-            hasData = true;
-        }
-    });
-
-    if (!hasData) {
-        showStatus('data-status', 'Please enter at least one value', 'error');
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/databases/${currentDatabase}/tables/${tableName}/records`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data),
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showStatus('data-status', result.message, 'success');
-            // Clear form
-            inputs.forEach(input => input.value = '');
-        } else {
-            showStatus('data-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('data-status', 'Network error: ' + error.message, 'error');
-    }
-}
-
-// Load schema automatically when table is selected for insert
-async function loadTableSchemaForInsert() {
-    const tableName = document.getElementById('insert-table-dropdown').value.trim();
-    if (!tableName) {
-        document.getElementById('insert-fields').style.display = 'none';
-        document.getElementById('insert-btn').style.display = 'none';
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/tables/${tableName}/schema`);
-        const result = await response.json();
-
-        if (response.ok && result.data && result.data.columns) {
-            const container = document.getElementById('insert-fields');
-            container.innerHTML = '<h4>Enter Data:</h4>';
-
-            result.data.columns.forEach(col => {
-                const fieldDiv = document.createElement('div');
-                fieldDiv.className = 'field-input';
-                fieldDiv.innerHTML = `
-                    <label>${col.name} (${col.type}):</label>
-                    <input type="text" data-column="${col.name}" placeholder="Enter ${col.type.toLowerCase()} value">
-                `;
-                container.appendChild(fieldDiv);
-            });
-
-            container.style.display = 'block';
-            document.getElementById('insert-btn').style.display = 'block';
-            showStatus('data-status', `Ready to insert into '${tableName}'`, 'success');
-        } else {
-            showStatus('data-status', 'Failed to load table schema', 'error');
-        }
-    } catch (error) {
-        showStatus('data-status', 'Network error: ' + error.message, 'error');
-    }
-}
-
-// Load tables for View operations
-async function loadTablesToView() {
-    if (!currentDatabase) {
-        const dropdown = document.getElementById('view-table-dropdown');
-        dropdown.innerHTML = '<option value="">Select a database first</option>';
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/databases/${currentDatabase}`);
-        const result = await response.json();
-
-        if (response.ok && result.data && result.data.tables) {
-            const dropdown = document.getElementById('view-table-dropdown');
-            dropdown.innerHTML = '<option value="">Select a table</option>';
-            
-            result.data.tables.forEach(table => {
-                const option = document.createElement('option');
-                option.value = table;
-                option.textContent = table;
-                dropdown.appendChild(option);
-            });
-        }
-    } catch (error) {
-        console.error('Error loading tables:', error);
-    }
-}
-
-// Load tables for Update operations
-async function loadTablesToUpdate() {
-    try {
-        const response = await fetch(`${API_BASE}/tables/list`);
-        const result = await response.json();
-
-        if (response.ok && result.data) {
-            const dropdown = document.getElementById('update-table-dropdown');
-            dropdown.innerHTML = '<option value="">Select a table</option>';
-            
-            result.data.forEach(table => {
-                const option = document.createElement('option');
-                option.value = table;
-                option.textContent = table;
-                dropdown.appendChild(option);
-            });
-        }
-    } catch (error) {
-        console.error('Error loading tables:', error);
-    }
-}
-
-// Load schema automatically when table is selected for update
-async function loadTableSchemaForUpdate() {
-    const tableName = document.getElementById('update-table-dropdown').value.trim();
-    if (!tableName) {
-        document.getElementById('update-fields').style.display = 'none';
-        document.getElementById('update-condition').style.display = 'none';
-        document.getElementById('update-btn').style.display = 'none';
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/tables/${tableName}/schema`);
-        const result = await response.json();
-
-        if (response.ok && result.data && result.data.columns) {
-            const container = document.getElementById('update-fields');
-            container.innerHTML = '<h4>Update Data:</h4>';
-
-            result.data.columns.forEach(col => {
-                const fieldDiv = document.createElement('div');
-                fieldDiv.className = 'field-input';
-                fieldDiv.innerHTML = `
-                    <label>${col.name} (${col.type}):</label>
-                    <input type="text" data-column="${col.name}" placeholder="New ${col.type.toLowerCase()} value (leave empty to keep current)">
-                `;
-                container.appendChild(fieldDiv);
-            });
-
-            container.style.display = 'block';
-            document.getElementById('update-condition').style.display = 'block';
-            document.getElementById('update-btn').style.display = 'block';
-            showStatus('data-status', `Ready to update '${tableName}'`, 'success');
-        } else {
-            showStatus('data-status', 'Failed to load table schema', 'error');
-        }
-    } catch (error) {
-        showStatus('data-status', 'Network error: ' + error.message, 'error');
-    }
-}
-
-// Load tables for Delete operations
-async function loadTablesToDelete() {
-    try {
-        const response = await fetch(`${API_BASE}/tables/list`);
-        const result = await response.json();
-
-        if (response.ok && result.data) {
-            const dropdown = document.getElementById('delete-table-dropdown');
-            dropdown.innerHTML = '<option value="">Select a table</option>';
-            
-            result.data.forEach(table => {
-                const option = document.createElement('option');
-                option.value = table;
-                option.textContent = table;
-                dropdown.appendChild(option);
-            });
-        }
-    } catch (error) {
-        console.error('Error loading tables:', error);
-    }
-}
-
-// Table operations
-function addColumnInput() {
-    const container = document.getElementById('columns-container');
-    const columnInput = document.createElement('div');
-    columnInput.className = 'column-input';
-    columnInput.innerHTML = `
-        <input type="text" placeholder="Column name" class="col-name" required>
-        <select class="col-type" required>
-            <option value="">Select data type</option>
+function addColumnRow() {
+    const builder = document.getElementById('column-builder');
+    const row = document.createElement('div');
+    row.className = 'col-row';
+    row.innerHTML = `
+        <input type="text" placeholder="Column name" class="col-name">
+        <select class="col-type">
+            <option value="">Type...</option>
+            <option value="INT AUTO_INCREMENT PRIMARY KEY">ID (Auto PK)</option>
             <option value="VARCHAR(255)">VARCHAR(255)</option>
-            <option value="VARCHAR(50)">VARCHAR(50)</option>
             <option value="VARCHAR(100)">VARCHAR(100)</option>
             <option value="INT">INT</option>
             <option value="BIGINT">BIGINT</option>
             <option value="FLOAT">FLOAT</option>
             <option value="DOUBLE">DOUBLE</option>
             <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
+            <option value="TEXT">TEXT</option>
             <option value="DATE">DATE</option>
             <option value="DATETIME">DATETIME</option>
-            <option value="TIMESTAMP">TIMESTAMP</option>
-            <option value="TEXT">TEXT</option>
             <option value="BOOLEAN">BOOLEAN</option>
-            <option value="TINYINT(1)">TINYINT(1)</option>
-            <option value="BLOB">BLOB</option>
         </select>
-        <button onclick="removeColumn(this)" class="btn-danger">Remove</button>
+        <button onclick="this.parentElement.remove()" class="btn btn-icon btn-danger" title="Remove">✕</button>
     `;
-    container.appendChild(columnInput);
-}
-
-function removeColumn(button) {
-    button.parentElement.remove();
+    builder.appendChild(row);
 }
 
 async function createTable() {
-    const tableName = document.getElementById('table-name').value.trim();
-    if (!tableName) {
-        showStatus('table-status', 'Please enter a table name', 'error');
-        return;
-    }
+    if (!currentDB) return toast('Select a database first', 'error');
+    const tableName = document.getElementById('new-table-name').value.trim();
+    if (!tableName) return toast('Enter a table name', 'error');
 
     const columns = {};
-    const columnInputs = document.querySelectorAll('.column-input');
-    let hasValidColumns = false;
-
-    columnInputs.forEach(input => {
-        const colName = input.querySelector('.col-name').value.trim();
-        const colType = input.querySelector('.col-type').value.trim();
-
-        if (colName && colType) {
-            columns[colName] = colType;
-            hasValidColumns = true;
-        }
+    let valid = false;
+    document.querySelectorAll('#column-builder .col-row').forEach(row => {
+        const name = row.querySelector('.col-name').value.trim();
+        const type = row.querySelector('.col-type').value;
+        if (name && type) { columns[name] = type; valid = true; }
     });
+    if (!valid) return toast('Add at least one column', 'error');
 
-    if (!hasValidColumns) {
-        showStatus('table-status', 'Please add at least one valid column', 'error');
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/tables`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                name: tableName,
-                columns: columns,
-            }),
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showStatus('table-status', result.message, 'success');
-            document.getElementById('table-name').value = '';
-            document.getElementById('columns-container').innerHTML = `
-                <div class="column-input">
-                    <input type="text" placeholder="Column name" class="col-name" required>
-                    <select class="col-type" required>
-                        <option value="">Select data type</option>
-                        <option value="VARCHAR(255)">VARCHAR(255)</option>
-                        <option value="VARCHAR(50)">VARCHAR(50)</option>
-                        <option value="VARCHAR(100)">VARCHAR(100)</option>
-                        <option value="INT">INT</option>
-                        <option value="BIGINT">BIGINT</option>
-                        <option value="FLOAT">FLOAT</option>
-                        <option value="DOUBLE">DOUBLE</option>
-                        <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
-                        <option value="DATE">DATE</option>
-                        <option value="DATETIME">DATETIME</option>
-                        <option value="TIMESTAMP">TIMESTAMP</option>
-                        <option value="TEXT">TEXT</option>
-                        <option value="BOOLEAN">BOOLEAN</option>
-                        <option value="TINYINT(1)">TINYINT(1)</option>
-                        <option value="BLOB">BLOB</option>
-                    </select>
-                    <button onclick="removeColumn(this)" class="btn-danger">Remove</button>
-                </div>
-            `;
-        } else {
-            showStatus('table-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('table-status', 'Network error: ' + error.message, 'error');
-    }
+    await api(`/databases/${currentDB}/tables`, {
+        method: 'POST',
+        body: JSON.stringify({ name: tableName, columns }),
+    });
+    document.getElementById('new-table-name').value = '';
+    toast(`Table '${tableName}' created`);
 }
+
+// ---------- Add Column ----------
 
 async function addColumn() {
-    const tableName = document.getElementById('add-col-table').value.trim();
-    const colName = document.getElementById('add-col-name').value.trim();
-    const colType = document.getElementById('add-col-type').value.trim();
+    if (!currentDB) return toast('Select a database first', 'error');
+    const table = document.getElementById('addcol-table').value;
+    const name = document.getElementById('addcol-name').value.trim();
+    const type = document.getElementById('addcol-type').value;
+    if (!table || !name || !type) return toast('Fill in all fields', 'error');
 
-    if (!tableName || !colName || !colType) {
-        showStatus('table-status', 'Please fill in all fields', 'error');
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/tables/${tableName}/columns`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                name: colName,
-                type: colType,
-            }),
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showStatus('table-status', result.message, 'success');
-            document.getElementById('add-col-table').value = '';
-            document.getElementById('add-col-name').value = '';
-            document.getElementById('add-col-type').value = '';
-        } else {
-            showStatus('table-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('table-status', 'Network error: ' + error.message, 'error');
-    }
+    await api(`/databases/${currentDB}/tables/${table}/columns`, {
+        method: 'POST',
+        body: JSON.stringify({ name, type }),
+    });
+    document.getElementById('addcol-name').value = '';
+    toast(`Column '${name}' added to '${table}'`);
 }
 
-// Data operations
-async function loadTableSchema(operation) {
-    const dropdownId = `${operation}-table-dropdown`;
-    const tableName = document.getElementById(dropdownId).value.trim();
-    if (!tableName) {
-        showStatus('data-status', 'Please select a table', 'error');
-        return;
-    }
+// ---------- Insert Record ----------
+
+async function loadInsertForm() {
+    const table = document.getElementById('insert-table').value;
+    const container = document.getElementById('insert-form-fields');
+    const submitBtn = document.getElementById('insert-submit');
+    if (!table || !currentDB) { container.innerHTML = ''; submitBtn.style.display = 'none'; return; }
 
     try {
-        const response = await fetch(`${API_BASE}/tables/${tableName}/schema`);
-        const result = await response.json();
+        const res = await api(`/databases/${currentDB}/tables/${table}/schema`);
+        const cols = res.data?.columns || [];
+        container.innerHTML = cols.map(col => {
+            const inputType = getInputType(col.type);
+            return `
+                <div class="insert-field">
+                    <label>${col.name} <span class="muted">(${col.type})</span></label>
+                    <input type="${inputType}" data-col="${col.name}" placeholder="Enter value...">
+                </div>
+            `;
+        }).join('');
+        submitBtn.style.display = 'block';
+    } catch (_) {}
+}
 
-        if (response.ok) {
-            const container = document.getElementById(`${operation}-fields`);
-            container.innerHTML = '';
+async function submitInsert() {
+    const table = document.getElementById('insert-table').value;
+    if (!table || !currentDB) return;
 
-            result.columns.forEach(col => {
-                const fieldDiv = document.createElement('div');
-                fieldDiv.className = 'field-input';
-                fieldDiv.innerHTML = `
-                    <label>${col.name} (${col.type}):</label>
-                    <input type="text" data-column="${col.name}" placeholder="Enter ${col.type.toLowerCase()} value">
-                `;
-                container.appendChild(fieldDiv);
+    const data = {};
+    let hasData = false;
+    document.querySelectorAll('#insert-form-fields input').forEach(inp => {
+        const val = inp.value.trim();
+        if (val) { data[inp.dataset.col] = val; hasData = true; }
+    });
+    if (!hasData) return toast('Enter at least one value', 'error');
+
+    await api(`/databases/${currentDB}/tables/${table}/records`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+    document.querySelectorAll('#insert-form-fields input').forEach(i => i.value = '');
+    toast('Record inserted');
+}
+
+// ---------- Browse / View Records ----------
+
+async function loadRecords() {
+    const table = document.getElementById('browse-table').value;
+    const area = document.getElementById('records-area');
+    if (!table || !currentDB) return toast('Select a database and table', 'error');
+
+    try {
+        const res = await api(`/databases/${currentDB}/tables/${table}/records`);
+        const cols = res.data?.columns || [];
+        const records = res.data?.records || [];
+
+        if (records.length === 0) {
+            area.innerHTML = '<div class="no-data">📭 No records found</div>';
+            return;
+        }
+
+        // Detect primary key (first column whose type contains 'int' and 'auto_increment' or simply the first column)
+        const pkCol = cols.length > 0 ? cols[0].name : null;
+
+        let html = `<div class="record-count">${records.length} record(s) found</div>`;
+        html += '<div class="table-wrap"><table class="data-table"><thead><tr>';
+        cols.forEach(c => html += `<th>${c.name}</th>`);
+        html += '<th>Actions</th></tr></thead><tbody>';
+
+        records.forEach(rec => {
+            html += '<tr>';
+            cols.forEach(c => {
+                const val = rec[c.name];
+                html += `<td>${val !== null && val !== undefined ? val : '<span class="muted">NULL</span>'}</td>`;
             });
-
-            showStatus('data-status', `Schema loaded for table '${tableName}'`, 'success');
-        } else {
-            showStatus('data-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('data-status', 'Network error: ' + error.message, 'error');
-    }
+            const pkVal = rec[pkCol];
+            const recJSON = encodeURIComponent(JSON.stringify(rec));
+            const colsJSON = encodeURIComponent(JSON.stringify(cols));
+            html += `<td class="actions">
+                <button class="btn btn-sm btn-ghost" onclick="openEditModal('${table}','${pkCol}','${pkVal}', '${recJSON}', '${colsJSON}')">✏️</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteRecord('${table}','${pkCol}','${pkVal}')">🗑️</button>
+            </td>`;
+            html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        area.innerHTML = html;
+    } catch (_) {}
 }
 
-async function insertRecord() {
-    const tableName = document.getElementById('insert-table-dropdown').value.trim();
-    if (!tableName) {
-        showStatus('data-status', 'Please select a table', 'error');
-        return;
-    }
+// ---------- Edit modal ----------
 
+function openEditModal(table, pkCol, pkVal, recJSON, colsJSON) {
+    const record = JSON.parse(decodeURIComponent(recJSON));
+    const cols = JSON.parse(decodeURIComponent(colsJSON));
+    editContext = { table, pkCol, pkVal, cols };
+
+    const fields = document.getElementById('edit-fields');
+    fields.innerHTML = cols.map(col => {
+        const val = record[col.name] !== null && record[col.name] !== undefined ? record[col.name] : '';
+        const disabled = col.name === pkCol ? 'disabled' : '';
+        return `
+            <div class="insert-field">
+                <label>${col.name} <span class="muted">(${col.type})</span></label>
+                <input type="${getInputType(col.type)}" data-col="${col.name}" value="${val}" ${disabled}>
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+    document.getElementById('edit-modal').classList.add('hidden');
+    editContext = null;
+}
+
+async function submitEdit() {
+    if (!editContext) return;
     const data = {};
-    const inputs = document.querySelectorAll('#insert-fields input');
-    inputs.forEach(input => {
-        const column = input.getAttribute('data-column');
-        const value = input.value.trim();
-        if (value !== '') {
-            data[column] = value;
-        }
+    let changed = false;
+    document.querySelectorAll('#edit-fields input:not([disabled])').forEach(inp => {
+        const val = inp.value.trim();
+        if (val !== '') { data[inp.dataset.col] = val; changed = true; }
     });
+    if (!changed) return toast('No changes made', 'error');
 
-    if (Object.keys(data).length === 0) {
-        showStatus('data-status', 'Please enter at least one value', 'error');
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/tables/${tableName}/records`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data),
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showStatus('data-status', result.message, 'success');
-            // Clear inputs
-            inputs.forEach(input => input.value = '');
-        } else {
-            showStatus('data-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('data-status', 'Network error: ' + error.message, 'error');
-    }
-}
-
-async function viewRecords() {
-    const tableName = document.getElementById('view-table-dropdown').value.trim();
-    if (!tableName) {
-        showStatus('data-status', 'Please select a table', 'error');
-        return;
-    }
-
-    if (!currentDatabase) {
-        showStatus('data-status', 'Please select a database first', 'error');
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/databases/${currentDatabase}/tables/${tableName}/records`);
-        const result = await response.json();
-
-        if (response.ok && result.data && result.data.records) {
-            const container = document.getElementById('records-display');
-            const records = result.data.records;
-
-            if (records.length > 0) {
-                // Create a nice table
-                let html = `<h4>📊 Records in '${tableName}' (${records.length} records)</h4>`;
-                html += '<div class="table-container"><table class="data-table">';
-                
-                // Header
-                const columns = Object.keys(records[0]);
-                html += '<thead><tr>';
-                columns.forEach(col => {
-                    html += `<th>${col}</th>`;
-                });
-                html += '</tr></thead>';
-                
-                // Body
-                html += '<tbody>';
-                records.forEach(record => {
-                    html += '<tr>';
-                    columns.forEach(col => {
-                        const value = record[col] || 'NULL';
-                        html += `<td>${value}</td>`;
-                    });
-                    html += '</tr>';
-                });
-                html += '</tbody></table></div>';
-                
-                container.innerHTML = html;
-                showStatus('data-status', `Found ${records.length} records`, 'success');
-            } else {
-                container.innerHTML = '<div class="no-data">📭 No records found in this table</div>';
-                showStatus('data-status', 'No records found', 'info');
-            }
-        } else {
-            showStatus('data-status', result.error || 'Failed to load records', 'error');
-            document.getElementById('records-display').innerHTML = '';
-        }
-    } catch (error) {
-        showStatus('data-status', 'Network error: ' + error.message, 'error');
-    }
-}
-
-async function updateRecord() {
-    const tableName = document.getElementById('update-table-dropdown').value.trim();
-    const condition = document.getElementById('update-condition').value.trim();
-
-    if (!tableName || !condition) {
-        showStatus('data-status', 'Please select table and enter condition', 'error');
-        return;
-    }
-
-    const data = {};
-    const inputs = document.querySelectorAll('#update-fields input');
-    inputs.forEach(input => {
-        const column = input.getAttribute('data-column');
-        const value = input.value.trim();
-        if (value !== '') {
-            data[column] = value;
-        }
+    await api(`/databases/${currentDB}/tables/${editContext.table}/records`, {
+        method: 'PUT',
+        body: JSON.stringify({
+            data,
+            condition_col: editContext.pkCol,
+            condition_val: editContext.pkVal,
+        }),
     });
-
-    if (Object.keys(data).length === 0) {
-        showStatus('data-status', 'Please enter at least one value to update', 'error');
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/tables/${tableName}/records`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                data: data,
-                condition: condition,
-            }),
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showStatus('data-status', result.message, 'success');
-            // Clear inputs
-            inputs.forEach(input => input.value = '');
-            document.getElementById('update-condition').value = '';
-        } else {
-            showStatus('data-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('data-status', 'Network error: ' + error.message, 'error');
-    }
+    closeEditModal();
+    toast('Record updated');
+    loadRecords();
 }
 
-async function deleteRecord() {
-    const tableName = document.getElementById('delete-table-dropdown').value.trim();
-    const condition = document.getElementById('delete-condition').value.trim();
+// ---------- Delete ----------
 
-    if (!tableName || !condition) {
-        showStatus('data-status', 'Please select table and enter condition', 'error');
-        return;
-    }
-
-    if (!confirm('Are you sure you want to delete records? This action cannot be undone.')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/tables/${tableName}/records`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ condition: condition }),
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showStatus('data-status', result.message, 'success');
-            document.getElementById('delete-condition').value = '';
-        } else {
-            showStatus('data-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('data-status', 'Network error: ' + error.message, 'error');
-    }
+async function deleteRecord(table, pkCol, pkVal) {
+    if (!confirm('Delete this record?')) return;
+    await api(`/databases/${currentDB}/tables/${table}/records`, {
+        method: 'DELETE',
+        body: JSON.stringify({ condition_col: pkCol, condition_val: pkVal }),
+    });
+    toast('Record deleted');
+    loadRecords();
 }
+
+// ---------- Sample DB ----------
 
 async function createSampleDB() {
-    try {
-        const response = await fetch(`${API_BASE}/sample`, {
-            method: 'POST',
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showStatus('sample-status', result.message, 'success');
-        } else {
-            showStatus('sample-status', result.error, 'error');
-        }
-    } catch (error) {
-        showStatus('sample-status', 'Network error: ' + error.message, 'error');
-    }
+    await api('/sample', { method: 'POST' });
+    toast('RealEstate sample database created');
+    loadDatabases();
 }
 
-// Initialize the application
-document.addEventListener('DOMContentLoaded', function() {
-    showSection('database');
-    // Load databases and tables on page load
-    loadDatabasesToUse();
-    loadTablesForQuickInsert();
-    loadTablesToView();
-    loadTablesToUpdate();
-    loadTablesToDelete();
+// ---------- Helpers ----------
+
+function getInputType(mysqlType) {
+    const t = mysqlType.toLowerCase();
+    if (t.includes('int') || t.includes('float') || t.includes('double') || t.includes('decimal')) return 'number';
+    if (t.includes('datetime') || t.includes('timestamp')) return 'datetime-local';
+    if (t.includes('date')) return 'date';
+    return 'text';
+}
+
+// ---------- Init ----------
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadDatabases();
 });

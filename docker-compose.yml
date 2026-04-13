@@ -5,11 +5,13 @@ services:
       MYSQL_ROOT_PASSWORD: secret
     ports:
       - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-psecret"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 15
 
   app:
     build: .
@@ -17,7 +19,13 @@ services:
       mysql:
         condition: service_healthy
     ports:
-      - "8081:8080"
-    command: ./realestate-mgmt
-    stdin_open: true
-    tty: true
+      - "8081:8081"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: secret
+      APP_PORT: 8081
+
+volumes:
+  mysql_data:

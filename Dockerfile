@@ -1,14 +1,27 @@
-
-FROM golang:1.22-alpine
+# Stage 1: Build
+FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
-COPY main.go .
-COPY static/ ./static/
+# Initialize module and download dependencies
+COPY main.go ./
+COPY internal/ ./internal/
 
-RUN go mod init realestate-mgmt && \
+RUN go mod init dbmanager && \
     go get github.com/go-sql-driver/mysql && \
     go mod tidy && \
-    go build -o realestate-mgmt .
+    CGO_ENABLED=0 GOOS=linux go build -o dbmanager .
 
-CMD ["./realestate-mgmt"]
+# Stage 2: Run
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates
+
+WORKDIR /app
+
+COPY --from=builder /app/dbmanager .
+COPY static/ ./static/
+
+EXPOSE 8081
+
+CMD ["./dbmanager"]

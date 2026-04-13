@@ -3,179 +3,205 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Database Management System</title>
+    <title>Dynamic DB Manager</title>
+    <meta name="description" content="A dynamic MySQL database management system built with Go">
     <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🚀 Dynamic Database Management System</h1>
-            <p>MySQL Database Manager with Real-time Operations</p>
-        </header>
 
-        <div class="main-content">
-            <nav class="sidebar">
-                <h3>Database Operations</h3>
-                <button onclick="showSection('database')" class="nav-btn">📊 Database Management</button>
-                <button onclick="showSection('table')" class="nav-btn">📋 Table Management</button>
-                <button onclick="showSection('data')" class="nav-btn">💾 Data Operations</button>
-                <button onclick="showSection('sample')" class="nav-btn">🏗️ Create Sample DB</button>
-            </nav>
+<div id="app">
+    <!-- Top bar -->
+    <header id="topbar">
+        <div class="topbar-inner">
+            <h1>⚡ DB Manager</h1>
+            <div class="db-indicator">
+                <span id="current-db-badge">No database selected</span>
+            </div>
+        </div>
+    </header>
 
-            <main class="content">
-                <!-- Database Management Section -->
-                <section id="database-section" class="section">
-                    <h2>Database Management</h2>
-                    <div class="form-group">
-                        <input type="text" id="db-name" placeholder="Database name" required>
-                        <button onclick="createDatabase()" class="btn-primary">Create Database</button>
+    <div class="layout">
+        <!-- Sidebar -->
+        <nav id="sidebar">
+            <div class="nav-group">
+                <div class="nav-label">DATABASES</div>
+                <button class="nav-btn active" onclick="navigate('dashboard')">
+                    <span class="icon">📊</span> Dashboard
+                </button>
+                <button class="nav-btn" onclick="navigate('create-db')">
+                    <span class="icon">➕</span> Create Database
+                </button>
+            </div>
+            <div class="nav-group">
+                <div class="nav-label">TABLES</div>
+                <button class="nav-btn" onclick="navigate('create-table')">
+                    <span class="icon">🏗️</span> Create Table
+                </button>
+                <button class="nav-btn" onclick="navigate('add-column')">
+                    <span class="icon">📎</span> Add Column
+                </button>
+            </div>
+            <div class="nav-group">
+                <div class="nav-label">DATA</div>
+                <button class="nav-btn" onclick="navigate('insert')">
+                    <span class="icon">💾</span> Insert Record
+                </button>
+                <button class="nav-btn" onclick="navigate('browse')">
+                    <span class="icon">👁️</span> Browse Data
+                </button>
+            </div>
+            <div class="nav-group">
+                <div class="nav-label">TOOLS</div>
+                <button class="nav-btn" onclick="createSampleDB()">
+                    <span class="icon">🎲</span> Sample Database
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main id="content">
+            <!-- Toast notification -->
+            <div id="toast" class="toast hidden"></div>
+
+            <!-- Dashboard -->
+            <section id="page-dashboard" class="page active">
+                <h2>Dashboard</h2>
+                <p class="subtitle">Select a database to start managing its tables and records.</p>
+                <div class="card">
+                    <h3>Available Databases</h3>
+                    <div id="db-list" class="db-grid">
+                        <p class="muted">Loading...</p>
                     </div>
-                    <div class="form-group">
-                        <label for="use-db-dropdown">Select Database:</label>
-                        <button onclick="loadDatabasesToUse()" class="btn-secondary">Refresh Databases</button>
-                        <select id="use-db-dropdown" required>
-                            <option value="">Select a database</option>
-                        </select>
-                        <button onclick="useDatabase()" class="btn-primary">Use Database</button>
-                    </div>
-                    <div id="db-status" class="status"></div>
-                </section>
+                </div>
+            </section>
 
-                <!-- Table Management Section -->
-                <section id="table-section" class="section hidden">
-                    <h2>Table Management</h2>
-                    <div class="form-group">
-                        <input type="text" id="table-name" placeholder="Table name" required>
-                        <div id="columns-container">
-                            <div class="column-input">
-                                <input type="text" placeholder="Column name" class="col-name" required>
-                                <select class="col-type" required>
-                                    <option value="">Select data type</option>
-                                    <option value="VARCHAR(255)">VARCHAR(255)</option>
-                                    <option value="VARCHAR(50)">VARCHAR(50)</option>
-                                    <option value="VARCHAR(100)">VARCHAR(100)</option>
-                                    <option value="INT">INT</option>
-                                    <option value="BIGINT">BIGINT</option>
-                                    <option value="FLOAT">FLOAT</option>
-                                    <option value="DOUBLE">DOUBLE</option>
-                                    <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
-                                    <option value="DATE">DATE</option>
-                                    <option value="DATETIME">DATETIME</option>
-                                    <option value="TIMESTAMP">TIMESTAMP</option>
-                                    <option value="TEXT">TEXT</option>
-                                    <option value="BOOLEAN">BOOLEAN</option>
-                                    <option value="TINYINT(1)">TINYINT(1)</option>
-                                    <option value="BLOB">BLOB</option>
-                                </select>
-                                <button onclick="removeColumn(this)" class="btn-danger">Remove</button>
-                            </div>
+            <!-- Create Database -->
+            <section id="page-create-db" class="page">
+                <h2>Create Database</h2>
+                <p class="subtitle">Create a new MySQL database.</p>
+                <div class="card">
+                    <div class="form-row">
+                        <input type="text" id="new-db-name" placeholder="Enter database name" class="input-lg">
+                        <button onclick="createDatabase()" class="btn btn-primary">Create</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Create Table -->
+            <section id="page-create-table" class="page">
+                <h2>Create Table</h2>
+                <p class="subtitle">Build a new table with dynamic columns.</p>
+                <div class="card">
+                    <div class="form-row" style="margin-bottom:20px;">
+                        <input type="text" id="new-table-name" placeholder="Table name" class="input-lg">
+                    </div>
+                    <div id="column-builder">
+                        <div class="col-row">
+                            <input type="text" placeholder="Column name" class="col-name">
+                            <select class="col-type">
+                                <option value="">Type...</option>
+                                <option value="INT AUTO_INCREMENT PRIMARY KEY">ID (Auto PK)</option>
+                                <option value="VARCHAR(255)">VARCHAR(255)</option>
+                                <option value="VARCHAR(100)">VARCHAR(100)</option>
+                                <option value="INT">INT</option>
+                                <option value="BIGINT">BIGINT</option>
+                                <option value="FLOAT">FLOAT</option>
+                                <option value="DOUBLE">DOUBLE</option>
+                                <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
+                                <option value="TEXT">TEXT</option>
+                                <option value="DATE">DATE</option>
+                                <option value="DATETIME">DATETIME</option>
+                                <option value="BOOLEAN">BOOLEAN</option>
+                            </select>
+                            <button onclick="this.parentElement.remove()" class="btn btn-icon btn-danger" title="Remove">✕</button>
                         </div>
-                        <button onclick="addColumnInput()" class="btn-secondary">Add Column</button>
-                        <button onclick="createTable()" class="btn-primary">Create Table</button>
                     </div>
+                    <div class="form-actions">
+                        <button onclick="addColumnRow()" class="btn btn-ghost">+ Add Column</button>
+                        <button onclick="createTable()" class="btn btn-primary">Create Table</button>
+                    </div>
+                </div>
+            </section>
 
-                    <div class="form-group">
-                        <input type="text" id="add-col-table" placeholder="Table name" required>
-                        <input type="text" id="add-col-name" placeholder="Column name" required>
-                        <select id="add-col-type" required>
-                            <option value="">Select data type</option>
+            <!-- Add Column -->
+            <section id="page-add-column" class="page">
+                <h2>Add Column</h2>
+                <p class="subtitle">Add a new column to an existing table.</p>
+                <div class="card">
+                    <label class="field-label">Table</label>
+                    <select id="addcol-table" class="input-lg">
+                        <option value="">Select table...</option>
+                    </select>
+                    <div class="form-row" style="margin-top:16px;">
+                        <input type="text" id="addcol-name" placeholder="Column name">
+                        <select id="addcol-type">
+                            <option value="">Type...</option>
                             <option value="VARCHAR(255)">VARCHAR(255)</option>
-                            <option value="VARCHAR(50)">VARCHAR(50)</option>
-                            <option value="VARCHAR(100)">VARCHAR(100)</option>
                             <option value="INT">INT</option>
-                            <option value="BIGINT">BIGINT</option>
                             <option value="FLOAT">FLOAT</option>
-                            <option value="DOUBLE">DOUBLE</option>
-                            <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
+                            <option value="TEXT">TEXT</option>
                             <option value="DATE">DATE</option>
                             <option value="DATETIME">DATETIME</option>
-                            <option value="TIMESTAMP">TIMESTAMP</option>
-                            <option value="TEXT">TEXT</option>
                             <option value="BOOLEAN">BOOLEAN</option>
-                            <option value="TINYINT(1)">TINYINT(1)</option>
-                            <option value="BLOB">BLOB</option>
                         </select>
-                        <button onclick="addColumn()" class="btn-primary">Add Column</button>
+                        <button onclick="addColumn()" class="btn btn-primary">Add</button>
                     </div>
-                    <div id="table-status" class="status"></div>
-                </section>
+                </div>
+            </section>
 
-                <!-- Data Operations Section -->
-                <section id="data-section" class="section hidden">
-                    <h2>Data Operations</h2>
+            <!-- Insert Record -->
+            <section id="page-insert" class="page">
+                <h2>Insert Record</h2>
+                <p class="subtitle">Insert a new row into a table. The form is auto-generated from the schema.</p>
+                <div class="card">
+                    <label class="field-label">Table</label>
+                    <select id="insert-table" onchange="loadInsertForm()" class="input-lg">
+                        <option value="">Select table...</option>
+                    </select>
+                    <div id="insert-form-fields"></div>
+                    <div id="insert-submit" style="display:none;margin-top:16px;">
+                        <button onclick="submitInsert()" class="btn btn-primary">💾 Save Record</button>
+                    </div>
+                </div>
+            </section>
 
-                    <!-- Quick Insert Section -->
-                    <div class="operation-group">
-                        <h3>🚀 Quick Insert</h3>
-                        <p style="color: #666; font-size: 0.9rem; margin-bottom: 15px;">Simple way to insert data - just select table and fill the form!</p>
-                        <label for="quick-insert-table">Select Table:</label>
-                        <button onclick="loadTablesForQuickInsert()" class="btn-secondary">🔄 Refresh Tables</button>
-                        <select id="quick-insert-table" onchange="generateQuickInsertForm()" required>
-                            <option value="">Choose a table to insert into</option>
+            <!-- Browse Data -->
+            <section id="page-browse" class="page">
+                <h2>Browse Data</h2>
+                <p class="subtitle">View, edit, and delete records.</p>
+                <div class="card">
+                    <div class="form-row" style="margin-bottom:16px;">
+                        <select id="browse-table" class="input-lg">
+                            <option value="">Select table...</option>
                         </select>
-                        <div id="quick-insert-form" style="display: none;">
-                            <h4>📝 Fill in the data:</h4>
-                            <form id="quick-insert-form-element">
-                                <div id="quick-insert-fields"></div>
-                                <button type="button" onclick="submitQuickInsert()" class="btn-primary">💾 Save Record</button>
-                            </form>
-                        </div>
+                        <button onclick="loadRecords()" class="btn btn-primary">Load</button>
                     </div>
+                    <div id="records-area"></div>
+                </div>
+            </section>
 
-                    <div class="operation-group">
-                        <h3>👁️ View Records</h3>
-                        <label for="view-table-dropdown">Select Table:</label>
-                        <button onclick="loadTablesToView()" class="btn-secondary">🔄 Refresh Tables</button>
-                        <select id="view-table-dropdown" required>
-                            <option value="">Select a table</option>
-                        </select>
-                        <button onclick="viewRecords()" class="btn-primary">👁️ View Records</button>
-                        <div id="records-display" class="records-container"></div>
-                    </div>
-
-                    <div class="operation-group">
-                        <h3>✏️ Update Record</h3>
-                        <label for="update-table-dropdown">Select Table:</label>
-                        <button onclick="loadTablesToUpdate()" class="btn-secondary">🔄 Refresh Tables</button>
-                        <select id="update-table-dropdown" onchange="loadTableSchemaForUpdate()" required>
-                            <option value="">Select a table</option>
-                        </select>
-                        <div id="update-fields" class="fields-container" style="display: none;">
-                            <h4>Update Data:</h4>
-                        </div>
-                        <input type="text" id="update-condition" placeholder="WHERE condition (e.g., id = 1)" required style="display: none;">
-                        <button onclick="updateRecord()" class="btn-primary" id="update-btn" style="display: none;">✏️ Update Record</button>
-                    </div>
-
-                    <div class="operation-group">
-                        <h3>🗑️ Delete Record</h3>
-                        <label for="delete-table-dropdown">Select Table:</label>
-                        <button onclick="loadTablesToDelete()" class="btn-secondary">🔄 Refresh Tables</button>
-                        <select id="delete-table-dropdown" required>
-                            <option value="">Select a table</option>
-                        </select>
-                        <input type="text" id="delete-condition" placeholder="WHERE condition (e.g., id = 1)" required>
-                        <button onclick="deleteRecord()" class="btn-danger">🗑️ Delete Record</button>
-                    </div>
-
-                    <div id="data-status" class="status"></div>
-                </section>
-
-                <!-- Sample Database Section -->
-                <section id="sample-section" class="section hidden">
-                    <h2>Create Sample RealEstate Database</h2>
-                    <p>This will create a sample database with Campaign, Agent, and Properties tables.</p>
-                    <button onclick="createSampleDB()" class="btn-primary">Create Sample Database</button>
-                    <div id="sample-status" class="status"></div>
-                </section>
-            </main>
-        </div>
-
-        <footer>
-            <p>Dynamic Database Management System - Built with Go & MySQL</p>
-        </footer>
+        </main>
     </div>
+</div>
 
-    <script src="/static/app.js"></script>
+<!-- Edit Modal -->
+<div id="edit-modal" class="modal hidden">
+    <div class="modal-backdrop" onclick="closeEditModal()"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>✏️ Edit Record</h3>
+            <button onclick="closeEditModal()" class="btn btn-icon">✕</button>
+        </div>
+        <div id="edit-fields" class="modal-body"></div>
+        <div class="modal-footer">
+            <button onclick="closeEditModal()" class="btn btn-ghost">Cancel</button>
+            <button onclick="submitEdit()" class="btn btn-primary">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/app.js"></script>
 </body>
 </html>

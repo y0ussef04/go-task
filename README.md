@@ -1,134 +1,90 @@
-# Dynamic Database Management System in Go
+# ⚡ Dynamic Database Management System
 
-A comprehensive database management system built in Go that connects to MySQL, creates databases and tables programmatically, and performs full CRUD operations with a command-line interface.
+A mini **phpMyAdmin-like system** built with Go and MySQL. Fully dynamic — no hardcoded schemas. Fully containerized — runs with one command.
 
 ## Features
 
-- **MySQL Integration**: Connects to MySQL server using Go's database/sql package
-- **Database Creation**: Programmatically creates databases
-- **Dynamic Table Creation**: Flexible `CreateTable` function that can create tables with 2, 3, or n columns
-- **Full CRUD Operations**: Create, Read, Update, Delete operations for any table
-- **Dynamic Column Addition**: Add new columns to existing tables
-- **CLI Interface**: Interactive command-line interface for all operations
-- **RealEstate Use Case**: Includes sample database creation with Campaign, Agent, and Properties tables
+- **Dynamic Schema Engine** — Create databases, tables, and columns at runtime
+- **Full CRUD** — Insert, view, update, and delete records for any table
+- **Auto-generated Forms** — UI forms are built dynamically from live table schema
+- **Clean Architecture** — Handlers → Services → Repository layers
+- **Prepared Statements** — No raw SQL concatenation. All user data goes through `?` placeholders
+- **Docker Ready** — Single `docker-compose up --build` to run everything
 
-## Prerequisites
-
-- Docker and Docker Compose
-- Go 1.22+ (for local development)
-
-## Quick Start with Docker
-
-1. Clone or navigate to the project directory
-2. Run the application:
+## Quick Start
 
 ```bash
 docker-compose up --build
 ```
 
-This will:
-- Start a MySQL 8 container
-- Build the Go application
-- Run the CLI application
-
-## Accessing the CLI
-
-The application provides an interactive menu:
-
-```
-Menu:
-1. Create Database
-2. Use Database
-3. Create Table
-4. Add Column to Table
-5. Insert Record
-6. View Records
-7. Update Record
-8. Delete Record
-9. Create Sample RealEstate Database
-0. Exit
-```
-
-Choose options to perform various database operations.
-
-## Sample Usage
-
-1. **Create Sample Database**: Choose option 9 to create the RealEstate database with sample tables
-2. **Create Custom Table**: Choose option 3, enter table name and column details
-3. **Insert Data**: Choose option 5, enter table name and provide values for each column
-4. **View Data**: Choose option 6, enter table name to see all records
+Then open **http://localhost:8081** in your browser.
 
 ## Project Structure
 
 ```
-.
-├── main.go              # Main application code with CLI
-├── Dockerfile           # Docker build configuration
-├── docker-compose.yml   # Multi-container setup
-└── README.md           # This file
+go-task/
+├── main.go                          # Entry point
+├── internal/
+│   ├── config/config.go             # Env-based configuration
+│   ├── models/models.go             # Domain models (Column, Record, APIResponse)
+│   ├── repository/mysql_repo.go     # MySQL data access layer
+│   ├── service/db_service.go        # Business logic layer
+│   └── handler/handler.go           # HTTP handlers + routing
+├── static/
+│   ├── index.html                   # Single-page UI
+│   ├── styles.css                   # Dark-mode CSS
+│   └── app.js                       # Frontend logic
+├── Dockerfile                       # Multi-stage Go build
+└── docker-compose.yml               # App + MySQL orchestration
 ```
 
-## Core Functions
+## Architecture
 
-### Database Operations
-- `CreateDatabase(dbName string)` - Creates a new database
-- `UseDatabase(dbName string)` - Switches to a database
-
-### Table Operations
-- `CreateTable(tableName string, columns map[string]string)` - Creates table with specified columns
-- `AddColumn(tableName string, columnName string, dataType string)` - Adds column to existing table
-
-### CRUD Operations
-- `Insert(tableName string, data map[string]interface{})` - Inserts new record
-- `Select(tableName string)` - Displays all records from table
-- `Update(tableName string, data map[string]interface{}, condition string)` - Updates records
-- `Delete(tableName string, condition string)` - Deletes records
-
-## Database Schema (Sample)
-
-### Campaign Table
-- `camp_id` (INT, AUTO_INCREMENT, PRIMARY KEY)
-- `Camp_name` (VARCHAR(255))
-- `Cost` (FLOAT)
-
-### Agent Table
-- `Agent_id` (INT, AUTO_INCREMENT, PRIMARY KEY)
-- `Agent_name` (VARCHAR(255))
-- `Agent_salary` (FLOAT)
-- `Agent_Address` (VARCHAR(255))
-
-### Properties Table
-- `Prop_id` (INT, AUTO_INCREMENT, PRIMARY KEY)
-- `Prop_location` (VARCHAR(255))
-
-## Local Development
-
-If you prefer to run locally:
-
-1. Install Go and MySQL
-2. Start MySQL server
-3. Update connection string in `main.go` if needed
-4. Run:
-
-```bash
-go mod tidy
-go run main.go
+```
+Browser  →  Handler (HTTP)  →  Service (Logic)  →  Repository (MySQL)
+                                                         ↓
+                                                    database/sql
+                                                   + prepared stmts
 ```
 
-## Dependencies
+## API Endpoints
 
-- `github.com/go-sql-driver/mysql` - MySQL driver for Go
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/databases` | List all databases |
+| POST | `/api/databases` | Create database |
+| GET | `/api/databases/{db}/tables` | List tables |
+| POST | `/api/databases/{db}/tables` | Create table |
+| GET | `/api/databases/{db}/tables/{t}/columns` | Get schema |
+| POST | `/api/databases/{db}/tables/{t}/columns` | Add column |
+| GET | `/api/databases/{db}/tables/{t}/records` | Get records |
+| POST | `/api/databases/{db}/tables/{t}/records` | Insert record |
+| PUT | `/api/databases/{db}/tables/{t}/records` | Update record |
+| DELETE | `/api/databases/{db}/tables/{t}/records` | Delete record |
+| POST | `/api/sample` | Create sample RealEstate DB |
 
 ## Docker Configuration
 
-- **MySQL**: Version 8, root password: `secret`, port 3306
-- **Go App**: Version 1.22-alpine
-- **Health Checks**: MySQL health check ensures database is ready
+| Service | Image | Port |
+|---------|-------|------|
+| `app` | Custom (Go 1.22 + Alpine) | `8081` |
+| `mysql` | mysql:8 | `3306` |
 
-## Extending the System
+- **MySQL root password**: `secret`
+- **Health check**: MySQL must be healthy before the app starts
+- **Data persistence**: MySQL data stored in a named volume
 
-The system is designed to be fully dynamic:
-- Table names and column names are user-provided
-- Data types are specified at runtime
-- SQL queries are built dynamically
-- All operations work with any valid table structure
+## How It Works
+
+1. **Dashboard** — Click a database card to select it
+2. **Create Table** — Dynamic column builder with type dropdowns
+3. **Insert Record** — Form auto-generates from table schema
+4. **Browse Data** — View records in a table, click ✏️ to edit or 🗑️ to delete
+5. **Add Column** — Alter any table with a new column at runtime
+
+## Security
+
+- All identifiers (database, table, column names) are validated: alphanumeric + underscore only
+- All identifiers are backtick-quoted in SQL
+- All data values use prepared statement `?` placeholders
+- No raw SQL string concatenation for user data
