@@ -53,61 +53,212 @@ func main() {
 	reader = bufio.NewReader(os.Stdin)
 
 	fmt.Println()
-	printHelp()
-	fmt.Println()
+	mainMenu()
+}
 
-	// REPL loop
+func mainMenu() {
 	for {
-		prompt := "dbmanager"
-		if currentDB != "" {
-			prompt += " [" + currentDB + "]"
-		}
-		fmt.Printf("\n%s> ", prompt)
+		clearScreen()
+		fmt.Println("┌──────────────────────────────────────────────────────────────┐")
+		fmt.Println("│                      ⚡ MAIN MENU                            │")
+		fmt.Println("├──────────────────────────────────────────────────────────────┤")
+		fmt.Printf("│  Selected DB: %-46s │\n", currentDBName())
+		fmt.Println("├──────────────────────────────────────────────────────────────┤")
+		fmt.Println("│  1. Database Operations (List, Create, Use)                  │")
+		fmt.Println("│  2. Table Operations    (List, Create, Add Column)          │")
+		fmt.Println("│  3. Record Operations   (Select, Insert, Update, Delete)    │")
+		fmt.Println("│  4. Help / Command Info                                      │")
+		fmt.Println("│  5. Exit                                                     │")
+		fmt.Println("└──────────────────────────────────────────────────────────────┘")
 
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Println("\nGoodbye! 👋")
-			return
-		}
+		choice := prompt("Select an option (1-5)")
 
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		parts := splitArgs(line)
-		if len(parts) == 0 {
-			continue
-		}
-
-		cmd := strings.ToLower(parts[0])
-
-		switch cmd {
-		case "help":
+		switch choice {
+		case "1":
+			databaseMenu()
+		case "2":
+			tableMenu()
+		case "3":
+			recordMenu()
+		case "4":
 			printHelp()
-		case "exit", "quit":
+			prompt("Press Enter to continue...")
+		case "5", "exit", "quit":
 			fmt.Println("Goodbye! 👋")
-			return
-		case "list":
-			handleList(parts)
-		case "create":
-			handleCreate(parts)
-		case "use":
-			handleUse(parts)
-		case "add":
-			handleAdd(parts)
-		case "select":
-			handleSelect(parts)
-		case "insert":
-			handleInsert(parts)
-		case "update":
-			handleUpdate(parts)
-		case "delete":
-			handleDelete(parts)
+			os.Exit(0)
 		default:
-			printError("Unknown command: " + cmd + ". Type 'help' for available commands.")
+			printError("Invalid choice. Please enter a number between 1 and 5.")
+			time.Sleep(1 * time.Second)
 		}
 	}
+}
+
+func databaseMenu() {
+	for {
+		clearScreen()
+		fmt.Println("┌──────────────────────────────────────────────────────────────┐")
+		fmt.Println("│                  📂 DATABASE OPERATIONS                      │")
+		fmt.Println("├──────────────────────────────────────────────────────────────┤")
+		fmt.Printf("│  Selected DB: %-46s │\n", currentDBName())
+		fmt.Println("├──────────────────────────────────────────────────────────────┤")
+		fmt.Println("│  1. List All Databases                                       │")
+		fmt.Println("│  2. Create New Database                                      │")
+		fmt.Println("│  3. Switch to Database (Use)                                 │")
+		fmt.Println("│  4. Create Sample Database (RealEstate)                      │")
+		fmt.Println("│  5. Back to Main Menu                                        │")
+		fmt.Println("└──────────────────────────────────────────────────────────────┘")
+
+		choice := prompt("Select an option (1-5)")
+
+		switch choice {
+		case "1":
+			handleList([]string{"list", "db"})
+			prompt("Press Enter to continue...")
+		case "2":
+			name := prompt("Enter database name")
+			if name != "" {
+				handleCreate([]string{"create", "db", name})
+			}
+			prompt("Press Enter to continue...")
+		case "3":
+			name := prompt("Enter database name to use")
+			if name != "" {
+				handleUse([]string{"use", name})
+			}
+			prompt("Press Enter to continue...")
+		case "4":
+			handleCreate([]string{"create", "sample"})
+			prompt("Press Enter to continue...")
+		case "5":
+			return
+		default:
+			printError("Invalid choice.")
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+
+func tableMenu() {
+	for {
+		clearScreen()
+		fmt.Println("┌──────────────────────────────────────────────────────────────┐")
+		fmt.Println("│                    🏗️  TABLE OPERATIONS                        │")
+		fmt.Println("├──────────────────────────────────────────────────────────────┤")
+		fmt.Printf("│  Selected DB: %-46s │\n", currentDBName())
+		fmt.Println("├──────────────────────────────────────────────────────────────┤")
+		fmt.Println("│  1. List Tables in Current DB                                │")
+		fmt.Println("│  2. Create New Table (Interactive)                           │")
+		fmt.Println("│  3. Add Column to Table                                      │")
+		fmt.Println("│  4. Back to Main Menu                                        │")
+		fmt.Println("└──────────────────────────────────────────────────────────────┘")
+
+		choice := prompt("Select an option (1-4)")
+
+		switch choice {
+		case "1":
+			handleList([]string{"list", "tables"})
+			prompt("Press Enter to continue...")
+		case "2":
+			name := prompt("Enter new table name")
+			if name != "" {
+				handleCreate([]string{"create", "table", name})
+			}
+			prompt("Press Enter to continue...")
+		case "3":
+			table := prompt("Enter table name")
+			if table == "" {
+				continue
+			}
+			col := prompt("Enter column name")
+			if col == "" {
+				continue
+			}
+			typ := prompt("Enter column type (e.g., VARCHAR(255))")
+			if typ == "" {
+				continue
+			}
+			handleAdd([]string{"add", "column", table, col, typ})
+			prompt("Press Enter to continue...")
+		case "4":
+			return
+		default:
+			printError("Invalid choice.")
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+
+func recordMenu() {
+	for {
+		clearScreen()
+		fmt.Println("┌──────────────────────────────────────────────────────────────┐")
+		fmt.Println("│                    📄 RECORD OPERATIONS                      │")
+		fmt.Println("├──────────────────────────────────────────────────────────────┤")
+		fmt.Printf("│  Selected DB: %-46s │\n", currentDBName())
+		fmt.Println("├──────────────────────────────────────────────────────────────┤")
+		fmt.Println("│  1. View All Records (Select)                                │")
+		fmt.Println("│  2. Insert New Record                                        │")
+		fmt.Println("│  3. Update Existing Record                                   │")
+		fmt.Println("│  4. Delete Record                                            │")
+		fmt.Println("│  5. Back to Main Menu                                        │")
+		fmt.Println("└──────────────────────────────────────────────────────────────┘")
+
+		choice := prompt("Select an option (1-5)")
+
+		switch choice {
+		case "1":
+			table := prompt("Enter table name to view")
+			if table != "" {
+				handleSelect([]string{"select", table})
+			}
+			prompt("Press Enter to continue...")
+		case "2":
+			table := prompt("Enter table name to insert into")
+			if table != "" {
+				handleInsert([]string{"insert", table})
+			}
+			prompt("Press Enter to continue...")
+		case "3":
+			table := prompt("Enter table name")
+			if table == "" {
+				continue
+			}
+			pkCol := prompt("Enter primary key column name")
+			pkVal := prompt("Enter primary key value to update")
+			if pkCol != "" && pkVal != "" {
+				handleUpdate([]string{"update", table, pkCol, pkVal})
+			}
+			prompt("Press Enter to continue...")
+		case "4":
+			table := prompt("Enter table name")
+			if table == "" {
+				continue
+			}
+			pkCol := prompt("Enter primary key column name")
+			pkVal := prompt("Enter primary key value to delete")
+			if pkCol != "" && pkVal != "" {
+				handleDelete([]string{"delete", table, pkCol, pkVal})
+			}
+			prompt("Press Enter to continue...")
+		case "5":
+			return
+		default:
+			printError("Invalid choice.")
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+
+func currentDBName() string {
+	if currentDB == "" {
+		return "None (Please use 'Database Operations' to select one)"
+	}
+	return currentDB
+}
+
+func clearScreen() {
+	// A simple way to "clear" terminal scrolling
+	fmt.Print("\033[H\033[2J")
 }
 
 // ─── Help ──────────────────────────────────────────────
