@@ -11,13 +11,21 @@ A mini **phpMyAdmin-like system** built with Go and MySQL. Fully dynamic — no 
 - **Prepared Statements** — No raw SQL concatenation. All user data goes through `?` placeholders
 - **Docker Ready** — Single `docker-compose up --build` to run everything
 
-## Quick Start
+Then open **http://localhost:8081** in your browser.
 
+## CLI Interface
+
+In addition to the web GUI, you can use the interactive CLI tool built directly into the Docker environment.
+
+To start the CLI:
 ```bash
-docker-compose up --build
+docker compose run --rm cli
 ```
 
-Then open **http://localhost:8081** in your browser.
+**Why use the CLI?**
+- **Bulk Operations**: Create sample databases and tables quickly.
+- **Direct Access**: Interact with the database from your terminal without opening a browser.
+- **Clean Environment**: The CLI connects to the same MySQL container as the GUI.
 
 ## Project Structure
 

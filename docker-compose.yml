@@ -27,5 +27,19 @@ services:
       DB_PASSWORD: secret
       APP_PORT: 8081
 
+  cli:
+    build: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: secret
+    stdin_open: true
+    tty: true
+    entrypoint: ["./dbcli"]
+
 volumes:
   mysql_data:
