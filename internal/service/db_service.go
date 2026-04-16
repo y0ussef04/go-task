@@ -4,6 +4,7 @@ import (
 	"dbmanager/internal/models"
 	"dbmanager/internal/repository"
 	"fmt"
+	"strings"
 )
 
 // DBService is the business logic layer between handlers and the repository.
@@ -99,7 +100,10 @@ func (s *DBService) DeleteRecord(dbName, tableName, condCol string, condVal inte
 
 func (s *DBService) CreateSampleDatabase() error {
 	if err := s.CreateDatabase("RealEstate"); err != nil {
-		return err
+		// Ignore "already exists" errors for sample data
+		if !strings.Contains(err.Error(), "already exists") {
+			return err
+		}
 	}
 
 	columns := []struct {
@@ -134,7 +138,10 @@ func (s *DBService) CreateSampleDatabase() error {
 
 	for _, t := range columns {
 		if err := s.repo.CreateTable("RealEstate", t.table, t.cols); err != nil {
-			return fmt.Errorf("create table %s: %w", t.table, err)
+			// Ignore "already exists" errors for sample data
+			if !strings.Contains(err.Error(), "already exists") {
+				return fmt.Errorf("create table %s: %w", t.table, err)
+			}
 		}
 	}
 	return nil

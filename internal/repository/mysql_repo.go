@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"dbmanager/internal/models"
+
+	mysqldriver "github.com/go-sql-driver/mysql"
 )
 
 // MySQLRepository handles all direct database interactions.
@@ -46,8 +48,14 @@ func (r *MySQLRepository) CreateDatabase(name string) error {
 	if !isValidIdentifier(name) {
 		return fmt.Errorf("invalid database name: %s", name)
 	}
-	_, err = db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`", name))
-	return err
+	_, err = db.Exec(fmt.Sprintf("CREATE DATABASE `%s`", name))
+	if err != nil {
+		if isDuplicateError(err) {
+			return fmt.Errorf("database '%s' already exists", name)
+		}
+		return err
+	}
+	return nil
 }
 
 // ListDatabases returns all database names.
@@ -128,9 +136,15 @@ func (r *MySQLRepository) CreateTable(dbName, tableName string, columns []models
 		parts = append(parts, fmt.Sprintf("`%s` %s", col.Name, col.Type))
 	}
 
-	query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS `%s` (%s)", tableName, strings.Join(parts, ", "))
+	query := fmt.Sprintf("CREATE TABLE `%s` (%s)", tableName, strings.Join(parts, ", "))
 	_, err = db.Exec(query)
-	return err
+	if err != nil {
+		if isDuplicateError(err) {
+			return fmt.Errorf("table '%s' already exists in database '%s'", tableName, dbName)
+		}
+		return err
+	}
+	return nil
 }
 
 // GetColumns returns ordered column info for a table.
@@ -224,7 +238,13 @@ func (r *MySQLRepository) InsertRecord(dbName, tableName string, data map[string
 	defer stmt.Close()
 
 	_, err = stmt.Exec(values...)
-	return err
+	if err != nil {
+		if isDuplicateError(err) {
+			return fmt.Errorf("duplicate entry: a record with the same key already exists in '%s'", tableName)
+		}
+		return err
+	}
+	return nil
 }
 
 // SelectRecords retrieves all records from a table.
@@ -322,8 +342,18 @@ func (r *MySQLRepository) UpdateRecord(dbName, tableName string, data map[string
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(values...)
-	return err
+	result, err := stmt.Exec(values...)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("record not found: no rows matched %s = %v in '%s'", condCol, condVal, tableName)
+	}
+	return nil
 }
 
 // DeleteRecord deletes rows that match conditionCol = conditionVal.
@@ -346,8 +376,18 @@ func (r *MySQLRepository) DeleteRecord(dbName, tableName, condCol string, condVa
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(condVal)
-	return err
+	result, err := stmt.Exec(condVal)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("record not found: no rows matched %s = %v in '%s'", condCol, condVal, tableName)
+	}
+	return nil
 }
 
 // ---------- Helpers ----------
@@ -378,4 +418,13 @@ func isValidType(t string) bool {
 		}
 	}
 	return true
+}
+
+// isDuplicateError checks if a MySQL error is a duplicate entry or "already exists" error.
+func isDuplicateError(err error) bool {
+	if mysqlErr, ok := err.(*mysqldriver.MySQLError); ok {
+		// 1062 = Duplicate entry, 1007 = Database already exists, 1050 = Table already exists
+		return mysqlErr.Number == 1062 || mysqlErr.Number == 1007 || mysqlErr.Number == 1050
+	}
+	return false
 }
