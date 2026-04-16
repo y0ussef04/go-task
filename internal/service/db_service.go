@@ -113,7 +113,7 @@ func (s *DBService) CreateSampleDatabase() error {
 		{
 			table: "Campaign",
 			cols: []models.Column{
-				{Name: "camp_id", Type: "INT AUTO_INCREMENT PRIMARY KEY"},
+				{Name: "id", Type: "INT AUTO_INCREMENT PRIMARY KEY"},
 				{Name: "Camp_name", Type: "VARCHAR(255)"},
 				{Name: "Cost", Type: "FLOAT"},
 			},
@@ -121,7 +121,7 @@ func (s *DBService) CreateSampleDatabase() error {
 		{
 			table: "Agent",
 			cols: []models.Column{
-				{Name: "Agent_id", Type: "INT AUTO_INCREMENT PRIMARY KEY"},
+				{Name: "id", Type: "INT AUTO_INCREMENT PRIMARY KEY"},
 				{Name: "Agent_name", Type: "VARCHAR(255)"},
 				{Name: "Agent_salary", Type: "FLOAT"},
 				{Name: "Agent_Address", Type: "VARCHAR(255)"},
@@ -130,7 +130,7 @@ func (s *DBService) CreateSampleDatabase() error {
 		{
 			table: "Properties",
 			cols: []models.Column{
-				{Name: "Prop_id", Type: "INT AUTO_INCREMENT PRIMARY KEY"},
+				{Name: "id", Type: "INT AUTO_INCREMENT PRIMARY KEY"},
 				{Name: "Prop_location", Type: "VARCHAR(255)"},
 			},
 		},

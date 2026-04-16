@@ -111,10 +111,29 @@ func (r *MySQLRepository) ListTables(dbName string) ([]string, error) {
 }
 
 // CreateTable creates a table with the given columns inside dbName.
+// It automatically prepends an 'id' INT AUTO_INCREMENT PRIMARY KEY column if not present.
 func (r *MySQLRepository) CreateTable(dbName, tableName string, columns []models.Column) error {
 	if !isValidIdentifier(tableName) {
 		return fmt.Errorf("invalid table name: %s", tableName)
 	}
+
+	// Auto-add id primary key if it doesn't exist AND no other PK is defined
+	hasID := false
+	hasPK := false
+	for _, col := range columns {
+		if strings.ToLower(col.Name) == "id" {
+			hasID = true
+		}
+		if strings.Contains(strings.ToUpper(col.Type), "PRIMARY KEY") {
+			hasPK = true
+		}
+	}
+
+	if !hasID && !hasPK {
+		idCol := models.Column{Name: "id", Type: "INT AUTO_INCREMENT PRIMARY KEY"}
+		columns = append([]models.Column{idCol}, columns...)
+	}
+
 	if len(columns) == 0 {
 		return fmt.Errorf("at least one column is required")
 	}
